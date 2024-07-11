@@ -1,3 +1,11 @@
+/*
+Family Name: Silva
+Given Name(s): Noah
+Student Number: 220090890
+EECS Login ID (the one you use to access the red server): noahs957
+YorkU email address (the one that appears in eClass): noahs957@my.yorku.ca
+*/
+
 #include <stdio.h>
 #include <stdlib.h>
 
