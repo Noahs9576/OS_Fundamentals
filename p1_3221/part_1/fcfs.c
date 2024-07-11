@@ -34,10 +34,6 @@ int numberOfProcesses=0;
 
         for (int j = 0; j < p->numberOfBursts; j++) {
             currentTime += p->bursts[j].length;
-            if (j + 1 < p->numberOfBursts) {
-                currentTime += p->bursts[j + 1].length;
-                contextSwitches++;
-            }
         }
 
         p->endTime = currentTime;
