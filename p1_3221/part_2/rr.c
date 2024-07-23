@@ -1,9 +1,15 @@
+/*
+Family Name: Silva
+Given Name(s): Noah
+Student Number: 220090890
+EECS Login ID (the one you use to access the red server): noahs957
+YorkU email address (the one that appears in eClass): noahs957@my.yorku.ca
+*/
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <assert.h>
 #include "sch-helpers.h"
-
-#define TIME_QUANTUM 10
 
 process processes[MAX_PROCESSES+1];
 int numProcesses = 0;
@@ -17,6 +23,7 @@ int currentTime = 0;
 int utilizedCpuTime = 0;
 process *tempQueue[MAX_PROCESSES];
 int tempQueueSize = 0;
+int timeQuantum;
 
 void initGlobals() {
     for (int i = 0; i < NUMBER_OF_PROCESSORS; i++) {
@@ -103,7 +110,7 @@ void handleProcessCompletion() {
                     cpu[i]->endTime = currentTime;
                 }
                 cpu[i] = NULL;
-            } else if (cpu[i]->bursts[cpu[i]->currentBurst].step % TIME_QUANTUM == 0) {
+            } else if (cpu[i]->bursts[cpu[i]->currentBurst].step % timeQuantum == 0) {
                 tempQueue[tempQueueSize++] = cpu[i];
                 cpu[i] = NULL;
                 contextSwitchCount++;
@@ -167,7 +174,14 @@ void calculateAndPrintResults() {
     printf("\n");
 }
 
-int main(void) {
+int main(int argc, char *argv[]) {
+    if (argc != 2) {
+        fprintf(stderr, "Usage: %s <time_quantum>\n", argv[0]);
+        return -1;
+    }
+
+    timeQuantum = atoi(argv[1]);
+
     int readResult = 0;
 
     initGlobals();
