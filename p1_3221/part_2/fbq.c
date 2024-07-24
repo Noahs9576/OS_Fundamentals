@@ -1,33 +1,23 @@
-/*
-Family Name: Silva
-Given Name(s): Noah
-Student Number: 220090890
-EECS Login ID (the one you use to access the red server): noahs957
-YorkU email address (the one that appears in eClass): noahs957@my.yorku.ca
-*/
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <assert.h>
 #include "sch-helpers.h"
 
-// Global variables
-process processes[MAX_PROCESSES + 1]; // Array to hold all processes
-int numberOfProcesses = 0; // Total number of processes
-int nextProcess = 0; // Index of next process to arrive
-process_queue readyQueue; // Ready queue to hold all ready processes
-process_queue waitingQueue; // Waiting queue to hold all processes in I/O waiting
-process *cpus[NUMBER_OF_PROCESSORS]; // Processes running on each CPU
-int totalWaitingTime = 0; // Total time processes spent waiting
-int totalContextSwitches = 0; // Total number of preemptions
-int simulationTime = 0; // Time steps simulated
-int cpuTimeUtilized = 0; // Time steps each CPU was executing
-process *preReadyQueue[MAX_PROCESSES]; // Holds processes moving to the ready queue this timestep (for sorting)
-int preReadyQueueSize = 0;
+process processes[MAX_PROCESSES + 1];
+int numberOfProcesses = 0;
+int nextProcess = 0;
+process_queue q0, q1, q2, waitingQueue;
+process *cpus[NUMBER_OF_PROCESSORS];
+int totalWaitingTime = 0;
+int totalContextSwitches = 0;
+int simulationTime = 0;
+int cpuTimeUtilized = 0;
 
-// Function to initialize all global variables
-void initializeGlobals(void) {
+int Q0_QUANTUM = 8;
+int Q1_QUANTUM = 20;
+
+void initializeGlobals() {
     for (int i = 0; i < NUMBER_OF_PROCESSORS; i++) {
         cpus[i] = NULL;
     }
@@ -37,23 +27,22 @@ void initializeGlobals(void) {
     totalContextSwitches = 0;
     numberOfProcesses = 0;
     nextProcess = 0;
-    preReadyQueueSize = 0;
-    initializeProcessQueue(&readyQueue);
+    initializeProcessQueue(&q0);
+    initializeProcessQueue(&q1);
+    initializeProcessQueue(&q2);
     initializeProcessQueue(&waitingQueue);
 }
 
-// Function to compare process pointers by process ID
 int compareProcessPointers(const void *a, const void *b) {
     process *pa = *(process **)a;
     process *pb = *(process **)b;
     if (pa->pid < pb->pid) return -1;
     if (pa->pid > pb->pid) return 1;
-    assert(0); // Should never happen
+    assert(0);
     return 0;
 }
 
-// Function to return the number of running processes
-int runningProcesses(void) {
+int runningProcesses() {
     int result = 0;
     for (int i = 0; i < NUMBER_OF_PROCESSORS; i++) {
         if (cpus[i] != NULL) result++;
@@ -61,49 +50,50 @@ int runningProcesses(void) {
     return result;
 }
 
-// Function to return the number of incoming processes
-int incomingProcesses(void) {
+int incomingProcesses() {
     return numberOfProcesses - nextProcess;
 }
 
-// Function to fetch and dequeue the next scheduled process from the ready queue
-process *nextScheduledProcess(void) {
-    if (readyQueue.size == 0) return NULL;
-    process *result = readyQueue.front->data;
-    dequeueProcess(&readyQueue);
-    return result;
+process *nextScheduledProcess() {
+    if (q0.size > 0) {
+        process *result = q0.front->data;
+        dequeueProcess(&q0);
+        return result;
+    }
+    if (q1.size > 0) {
+        process *result = q1.front->data;
+        dequeueProcess(&q1);
+        return result;
+    }
+    if (q2.size > 0) {
+        process *result = q2.front->data;
+        dequeueProcess(&q2);
+        return result;
+    }
+    return NULL;
 }
 
-// Function to enqueue newly arriving processes in the ready queue
-void moveIncomingProcesses(void) {
+void moveIncomingProcesses() {
     while (nextProcess < numberOfProcesses && processes[nextProcess].arrivalTime <= simulationTime) {
-        preReadyQueue[preReadyQueueSize++] = &processes[nextProcess++];
+        enqueueProcess(&q0, &processes[nextProcess++]);
     }
 }
 
-// Function to move waiting processes that are finished their I/O bursts to ready
-void moveWaitingProcesses(void) {
+void moveWaitingProcesses() {
     int size = waitingQueue.size;
     for (int i = 0; i < size; i++) {
         process *front = waitingQueue.front->data;
         dequeueProcess(&waitingQueue);
-        assert(front->bursts[front->currentBurst].step <= front->bursts[front->currentBurst].length);
         if (front->bursts[front->currentBurst].step == front->bursts[front->currentBurst].length) {
             front->currentBurst++;
-            preReadyQueue[preReadyQueueSize++] = front;
+            enqueueProcess(&q0, front);
         } else {
             enqueueProcess(&waitingQueue, front);
         }
     }
 }
 
-// Function to move ready processes into free CPUs according to scheduling algorithm
-void moveReadyProcesses(void) {
-    qsort(preReadyQueue, preReadyQueueSize, sizeof(process*), compareProcessPointers);
-    for (int i = 0; i < preReadyQueueSize; i++) {
-        enqueueProcess(&readyQueue, preReadyQueue[i]);
-    }
-    preReadyQueueSize = 0;
+void moveReadyProcesses() {
     for (int i = 0; i < NUMBER_OF_PROCESSORS; i++) {
         if (cpus[i] == NULL) {
             cpus[i] = nextScheduledProcess();
@@ -111,25 +101,35 @@ void moveReadyProcesses(void) {
     }
 }
 
-// Function to move running processes that have finished their CPU bursts to waiting, or terminate them
-void moveRunningProcesses(void) {
+void moveRunningProcesses() {
     for (int i = 0; i < NUMBER_OF_PROCESSORS; i++) {
         if (cpus[i] != NULL) {
-            if (cpus[i]->bursts[cpus[i]->currentBurst].step == cpus[i]->bursts[cpus[i]->currentBurst].length) {
-                cpus[i]->currentBurst++;
-                if (cpus[i]->currentBurst < cpus[i]->numberOfBursts) {
-                    enqueueProcess(&waitingQueue, cpus[i]);
+            process *p = cpus[i];
+            int currentBurst = p->currentBurst;
+            if (p->bursts[currentBurst].step == p->bursts[currentBurst].length) {
+                p->currentBurst++;
+                if (p->currentBurst < p->numberOfBursts) {
+                    enqueueProcess(&waitingQueue, p);
                 } else {
-                    cpus[i]->endTime = simulationTime;
+                    p->endTime = simulationTime;
                 }
                 cpus[i] = NULL;
+            } else if (p->currentQueue == 0 && p->bursts[currentBurst].step == Q0_QUANTUM) {
+                p->currentQueue = 1;
+                enqueueProcess(&q1, p);
+                cpus[i] = NULL;
+                totalContextSwitches++;
+            } else if (p->currentQueue == 1 && p->bursts[currentBurst].step == Q1_QUANTUM) {
+                p->currentQueue = 2;
+                enqueueProcess(&q2, p);
+                cpus[i] = NULL;
+                totalContextSwitches++;
             }
         }
     }
 }
 
-// Function to increment each waiting process' current I/O burst's progress
-void updateWaitingProcesses(void) {
+void updateWaitingProcesses() {
     int size = waitingQueue.size;
     for (int i = 0; i < size; i++) {
         process *front = waitingQueue.front->data;
@@ -139,18 +139,24 @@ void updateWaitingProcesses(void) {
     }
 }
 
-// Function to increment waiting time for each process in the ready queue
-void updateReadyProcesses(void) {
-    for (int i = 0; i < readyQueue.size; i++) {
-        process *front = readyQueue.front->data;
-        dequeueProcess(&readyQueue);
+void updateReadyProcesses() {
+    int size = q1.size;
+    for (int i = 0; i < size; i++) {
+        process *front = q1.front->data;
+        dequeueProcess(&q1);
         front->waitingTime++;
-        enqueueProcess(&readyQueue, front);
+        enqueueProcess(&q1, front);
+    }
+    size = q2.size;
+    for (int i = 0; i < size; i++) {
+        process *front = q2.front->data;
+        dequeueProcess(&q2);
+        front->waitingTime++;
+        enqueueProcess(&q2, front);
     }
 }
 
-// Function to update the progress for all currently executing processes
-void updateRunningProcesses(void) {
+void updateRunningProcesses() {
     for (int i = 0; i < NUMBER_OF_PROCESSORS; i++) {
         if (cpus[i] != NULL) {
             cpus[i]->bursts[cpus[i]->currentBurst].step++;
@@ -158,10 +164,17 @@ void updateRunningProcesses(void) {
     }
 }
 
-int main(void) {
+int main(int argc, char *argv[]) {
+    if (argc != 3) {
+        fprintf(stderr, "Usage: %s <Q0_QUANTUM> <Q1_QUANTUM>\n", argv[0]);
+        return -1;
+    }
+
+    Q0_QUANTUM = atoi(argv[1]);
+    Q1_QUANTUM = atoi(argv[2]);
+
     int sumOfTurnaroundTimes = 0;
     int doneReading = 0;
-    int i;
 
     initializeGlobals();
     while (doneReading = readProcess(&processes[numberOfProcesses])) {
@@ -192,7 +205,7 @@ int main(void) {
         simulationTime++;
     }
 
-    for (i = 0; i < numberOfProcesses; i++) {
+    for (int i = 0; i < numberOfProcesses; i++) {
         sumOfTurnaroundTimes += processes[i].endTime - processes[i].arrivalTime;
         totalWaitingTime += processes[i].waitingTime;
     }
@@ -209,7 +222,7 @@ int main(void) {
            totalContextSwitches);
 
     printf("PID(s) of last process(es) to finish :");
-    for (i = 0; i < numberOfProcesses; i++) {
+    for (int i = 0; i < numberOfProcesses; i++) {
         if (processes[i].endTime == simulationTime) {
             printf(" %d", processes[i].pid);
         }

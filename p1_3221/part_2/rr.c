@@ -25,21 +25,6 @@ process *tempQueue[MAX_PROCESSES];
 int tempQueueSize = 0;
 int timeQuantum;
 
-void initGlobals() {
-    for (int i = 0; i < NUMBER_OF_PROCESSORS; i++) {
-        cpu[i] = NULL;
-    }
-    currentTime = 0;
-    utilizedCpuTime = 0;
-    totalWaitTime = 0;
-    contextSwitchCount = 0;
-    numProcesses = 0;
-    nextProcessIndex = 0;
-    tempQueueSize = 0;
-    initializeProcessQueue(&readyQueue);
-    initializeProcessQueue(&ioQueue);
-}
-
 int compareByPID(const void *a, const void *b) {
     process *p1 = *((process**)a);
     process *p2 = *((process**)b);
@@ -154,16 +139,15 @@ void calculateAndPrintResults() {
         totalWaitTime += processes[i].waitingTime;
     }
 
-    printf("Average waiting time                 : %.2f units\n"
-           "Average turnaround time              : %.2f units\n"
-           "Time all processes finished          : %d\n"
-           "Average CPU utilization              : %.1f%%\n"
-           "Number of context switches           : %d\n",
-           totalWaitTime / (double) numProcesses,
-           totalTurnaroundTime / (double) numProcesses,
-           currentTime,
-           100.0 * utilizedCpuTime / currentTime,
-           contextSwitchCount);
+    double averageWaitTime = totalWaitTime / (double) numProcesses;
+    double averageTurnaroundTime = totalTurnaroundTime / (double) numProcesses;
+    double averageCPUUtilization = 100.0 * utilizedCpuTime / currentTime;
+
+    printf("Average waiting time                 : %.2f units\n", averageWaitTime);
+    printf("Average turnaround time              : %.2f units\n", averageTurnaroundTime);
+    printf("Time all processes finished          : %d\n", currentTime);
+    printf("Average CPU utilization              : %.1f%%\n", averageCPUUtilization);
+    printf("Number of context switches           : %d\n", contextSwitchCount);
 
     printf("PID(s) of last process(es) to finish :");
     for (int i = 0; i < numProcesses; i++) {
@@ -174,33 +158,7 @@ void calculateAndPrintResults() {
     printf("\n");
 }
 
-int main(int argc, char *argv[]) {
-    if (argc != 2) {
-        fprintf(stderr, "Usage: %s <time_quantum>\n", argv[0]);
-        return -1;
-    }
-
-    timeQuantum = atoi(argv[1]);
-
-    int readResult = 0;
-
-    initGlobals();
-
-    while ((readResult = readProcess(&processes[numProcesses])) != 0) {
-        if (readResult == 1) numProcesses++;
-        if (numProcesses > MAX_PROCESSES) break;
-    }
-
-    if (numProcesses == 0) {
-        fprintf(stderr, "Error: no processes specified in input.\n");
-        return -1;
-    } else if (numProcesses > MAX_PROCESSES) {
-        fprintf(stderr, "Error: too many processes specified in input; they cannot number more than %d.\n", MAX_PROCESSES);
-        return -1;
-    }
-
-    qsort(processes, numProcesses, sizeof(process), compareByArrival);
-
+void runSimulation() {
     while (1) {
         handleNewArrivals();
         handleProcessCompletion();
@@ -216,6 +174,40 @@ int main(int argc, char *argv[]) {
 
         currentTime++;
     }
+}
+
+int main(int argc, char *argv[]) {
+    if (argc != 2) {
+        fprintf(stderr, "Usage: %s <time_quantum>\n", argv[0]);
+        return -1;
+    }
+
+    timeQuantum = atoi(argv[1]);
+
+    for (int i = 0; i < NUMBER_OF_PROCESSORS; i++) {
+        cpu[i] = NULL;
+    }
+
+    initializeProcessQueue(&readyQueue);
+    initializeProcessQueue(&ioQueue);
+
+    int readResult = 0;
+    while ((readResult = readProcess(&processes[numProcesses])) != 0) {
+        if (readResult == 1) numProcesses++;
+        if (numProcesses > MAX_PROCESSES) break;
+    }
+
+    if (numProcesses == 0) {
+        fprintf(stderr, "Error: no processes specified in input.\n");
+        return -1;
+    } else if (numProcesses > MAX_PROCESSES) {
+        fprintf(stderr, "Error: too many processes specified in input; they cannot number more than %d.\n", MAX_PROCESSES);
+        return -1;
+    }
+
+    qsort(processes, numProcesses, sizeof(process), compareByArrival);
+
+    runSimulation();
 
     calculateAndPrintResults();
 
