@@ -11,6 +11,7 @@ YorkU email address (the one that appears in eClass): noahs957@my.yorku.ca
 #include <assert.h>
 #include "sch-helpers.h"
 
+// Global variables
 process processes[MAX_PROCESSES+1];
 int numProcesses = 0;
 int nextProcessIndex = 0;
@@ -21,16 +22,19 @@ int totalWaitTime = 0;
 int contextSwitchCount = 0;
 int currentTime = 0;
 int utilizedCpuTime = 0;
+// Temp queue to hold processes moving to the ready queue
 process *tempQueue[MAX_PROCESSES];
 int tempQueueSize = 0;
 int timeQuantum;
 
+// Comparing by pid in case of timing conflicts
 int compareByPID(const void *a, const void *b) {
     process *p1 = *((process**)a);
     process *p2 = *((process**)b);
     return (p1->pid < p2->pid) ? -1 : (p1->pid > p2->pid);
 }
 
+// Returns the ammount of running processes
 int countRunningProcesses() {
     int count = 0;
     for (int i = 0; i < NUMBER_OF_PROCESSORS; i++) {
@@ -39,10 +43,12 @@ int countRunningProcesses() {
     return count;
 }
 
+// Returns the ammount of incoming processes
 int countIncomingProcesses() {
     return numProcesses - nextProcessIndex;
 }
 
+// Returns a pointer to the next process in the ready queue
 process *getNextProcess() {
     if (readyQueue.size == 0) return NULL;
     process *p = readyQueue.front->data;
@@ -50,12 +56,14 @@ process *getNextProcess() {
     return p;
 }
 
+// Handles new arrivals by adding them to the ready queue
 void handleNewArrivals() {
     while (nextProcessIndex < numProcesses && processes[nextProcessIndex].arrivalTime <= currentTime) {
         tempQueue[tempQueueSize++] = &processes[nextProcessIndex++];
     }
 }
 
+// Handles IO completions by moving processes to the io queue
 void handleIOCompletion() {
     int size = ioQueue.size;
     for (int i = 0; i < size; i++) {
@@ -70,13 +78,16 @@ void handleIOCompletion() {
     }
 }
 
+// Handles CPU movement by sorting the temp queue and adding them to the ready queue
 void handleCPUMovement() {
+    // Sort the temp queue by PID
     qsort(tempQueue, tempQueueSize, sizeof(process*), compareByPID);
     for (int i = 0; i < tempQueueSize; i++) {
         enqueueProcess(&readyQueue, tempQueue[i]);
     }
     tempQueueSize = 0;
 
+    // Fill empty CPUs
     for (int i = 0; i < NUMBER_OF_PROCESSORS; i++) {
         if (cpu[i] == NULL) {
             cpu[i] = getNextProcess();
@@ -84,17 +95,21 @@ void handleCPUMovement() {
     }
 }
 
+// Handles process completions by moving them to the io queue or setting their end time
 void handleProcessCompletion() {
     for (int i = 0; i < NUMBER_OF_PROCESSORS; i++) {
         if (cpu[i] != NULL) {
+            // If the process has completed all of its bursts then set its end time
             if (cpu[i]->bursts[cpu[i]->currentBurst].step == cpu[i]->bursts[cpu[i]->currentBurst].length) {
                 cpu[i]->currentBurst++;
+                // If the process has more bursts then move it to the io queue
                 if (cpu[i]->currentBurst < cpu[i]->numberOfBursts) {
                     enqueueProcess(&ioQueue, cpu[i]);
                 } else {
                     cpu[i]->endTime = currentTime;
                 }
                 cpu[i] = NULL;
+            // If the process has completed the time quantum then move it to the temp queue
             } else if (cpu[i]->bursts[cpu[i]->currentBurst].step % timeQuantum == 0) {
                 tempQueue[tempQueueSize++] = cpu[i];
                 cpu[i] = NULL;
@@ -104,6 +119,7 @@ void handleProcessCompletion() {
     }
 }
 
+// Updates the IO processes
 void updateIOProcesses() {
     int size = ioQueue.size;
     for (int i = 0; i < size; i++) {
@@ -114,6 +130,7 @@ void updateIOProcesses() {
     }
 }
 
+// Updates the ready processes
 void updateReadyProcesses() {
     int size = readyQueue.size;
     for (int i = 0; i < size; i++) {
@@ -124,6 +141,7 @@ void updateReadyProcesses() {
     }
 }
 
+// Updates the CPU processes
 void updateCPUProcesses() {
     for (int i = 0; i < NUMBER_OF_PROCESSORS; i++) {
         if (cpu[i] != NULL) {
@@ -132,6 +150,7 @@ void updateCPUProcesses() {
     }
 }
 
+// Calculates and prints the results
 void calculateAndPrintResults() {
     int totalTurnaroundTime = 0;
     for (int i = 0; i < numProcesses; i++) {
@@ -158,6 +177,7 @@ void calculateAndPrintResults() {
     printf("\n");
 }
 
+// Runs the simulation
 void runSimulation() {
     while (1) {
         handleNewArrivals();
@@ -177,6 +197,7 @@ void runSimulation() {
 }
 
 int main(int argc, char *argv[]) {
+    // Check for correct number of inputs
     if (argc != 2) {
         fprintf(stderr, "Usage: %s <time_quantum>\n", argv[0]);
         return -1;
@@ -184,6 +205,7 @@ int main(int argc, char *argv[]) {
 
     timeQuantum = atoi(argv[1]);
 
+    // Initialize the CPU array
     for (int i = 0; i < NUMBER_OF_PROCESSORS; i++) {
         cpu[i] = NULL;
     }
@@ -192,11 +214,12 @@ int main(int argc, char *argv[]) {
     initializeProcessQueue(&ioQueue);
 
     int readResult = 0;
+    // Read the processes
     while ((readResult = readProcess(&processes[numProcesses])) != 0) {
         if (readResult == 1) numProcesses++;
         if (numProcesses > MAX_PROCESSES) break;
     }
-
+    
     if (numProcesses == 0) {
         fprintf(stderr, "Error: no processes specified in input.\n");
         return -1;
