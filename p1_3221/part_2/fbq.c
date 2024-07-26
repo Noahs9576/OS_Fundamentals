@@ -15,6 +15,7 @@ YorkU email address (the one that appears in eClass): noahs957@my.yorku.ca
 process processes[MAX_PROCESSES + 1];
 int numProcesses = 0;
 int nextProcessIndex = 0;
+// Create qs for each level of the FBQ
 process_queue q0, q1, q2, waitingQueue;
 process *cpu[NUMBER_OF_PROCESSORS];
 int totalWaitTime = 0;
@@ -46,7 +47,7 @@ int countIncomingProcesses() {
     return numProcesses - nextProcessIndex;
 }
 
-// Returns a pointer to the next process in the ready queue
+// Get the next process in the q with the highest priority
 process *getNextProcess() {
     if (q0.size > 0) {
         process *p = q0.front->data;
@@ -68,6 +69,7 @@ process *getNextProcess() {
 
 // Handles new arrivals by adding them to the ready queue
 void handleNewArrivals() {
+    // Add processes to q0 if they have arrived
     while (nextProcessIndex < numProcesses && processes[nextProcessIndex].arrivalTime <= currentTime) {
         enqueueProcess(&q0, &processes[nextProcessIndex++]);
     }
@@ -97,12 +99,13 @@ void handleCPUMovement() {
     }
 }
 
-// Handles process completions by moving them to the io queue or setting their end time
+// Handles process completions by setting their end time or moving them to the waiting queu / next queue
 void handleProcessCompletion() {
     for (int i = 0; i < NUMBER_OF_PROCESSORS; i++) {
         if (cpu[i] != NULL) {
             process *p = cpu[i];
             int currentBurst = p->currentBurst;
+            // If the process has finished its burst then move it to the next queue or set its end time
             if (p->bursts[currentBurst].step == p->bursts[currentBurst].length) {
                 p->currentBurst++;
                 if (p->currentBurst < p->numberOfBursts) {
@@ -126,7 +129,7 @@ void handleProcessCompletion() {
     }
 }
 
-// Updates the IO processes
+// Updates the IO processes by incrementing their current burst's progress
 void updateIOProcesses() {
     int size = waitingQueue.size;
     for (int i = 0; i < size; i++) {
@@ -137,8 +140,9 @@ void updateIOProcesses() {
     }
 }
 
-// Updates the ready processes
+// Updates the ready processes by incrementing their waiting time
 void updateReadyProcesses() {
+    // Increment waiting time for each process in q0
     int size = q0.size;
     for (int i = 0; i < size; i++) {
         process *p = q0.front->data;
@@ -146,6 +150,7 @@ void updateReadyProcesses() {
         p->waitingTime++;
         enqueueProcess(&q0, p);
     }
+    // Increment waiting time for each process in q1
     size = q1.size;
     for (int i = 0; i < size; i++) {
         process *p = q1.front->data;
@@ -153,6 +158,7 @@ void updateReadyProcesses() {
         p->waitingTime++;
         enqueueProcess(&q1, p);
     }
+    // Increment waiting time for each process in q2
     size = q2.size;
     for (int i = 0; i < size; i++) {
         process *p = q2.front->data;
@@ -250,6 +256,7 @@ int main(int argc, char *argv[]) {
         return -1;
     }
 
+    // Sort the processes by arrival time
     qsort(processes, numProcesses, sizeof(process), compareByArrival);
 
     runSimulation();
